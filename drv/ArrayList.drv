@@ -905,6 +905,15 @@ public class ARRAY_LIST KEY_GENERIC extends ABSTRACT_LIST KEY_GENERIC implements
 
 	@Override
 	public boolean removeAll(final STD_KEY_COLLECTION KEY_GENERIC_WILDCARD c) {
+#if KEYS_PRIMITIVE && ! defined(Custom)
+		// Exact primitive lists contain each of their own stored values; avoid quadratic self scans.
+		// Subclasses retain the original virtual contains() calls and their observable behavior.
+		if (c == this && getClass() == ARRAY_LIST.class) {
+			final boolean modified = size != 0;
+			clear();
+			return modified;
+		}
+#endif
 		final KEY_TYPE[] a = this.a;
 		int j = 0;
 		for(int i = 0; i < size; i++)
@@ -2113,6 +2122,33 @@ public class ARRAY_LIST KEY_GENERIC extends ABSTRACT_LIST KEY_GENERIC implements
 	}
 
 
+#if KEYS_PRIMITIVE && ! defined(Custom)
+	private static void testPrimitiveSelfRemoveAll() {
+		final ARRAY_LIST list = new ARRAY_LIST();
+		for (int i = 0; i < 96; i++) list.add(genKey());
+		final KEY_TYPE[] before = list.a.clone();
+		ensure(list.removeAll(list), "Nonempty primitive self-removeAll must report change");
+		ensure(list.isEmpty(), "Primitive self-removeAll must empty the list");
+		for (int i = 0; i < before.length; i++) {
+			ensure(KEY_EQUALS(list.a[i], before[i]), "Primitive clear must preserve backing lanes");
+		}
+		ensure(!list.removeAll(list), "Empty primitive self-removeAll must report no change");
+#if KEY_CLASS_Integer
+		final int[] containsCalls = {0};
+		final ARRAY_LIST subclass = new ARRAY_LIST() {
+			@Override public boolean contains(final int value) {
+				containsCalls[0]++;
+				return false;
+			}
+		};
+		subclass.add(1);
+		subclass.add(2);
+		ensure(!subclass.removeAll(subclass), "Subclass must retain contains dispatch");
+		ensure(subclass.size() == 2 && containsCalls[0] == 2, "Subclass callback count");
+#endif
+	}
+#endif
+
 	protected static void runTest(int n) throws Exception {
 		ARRAY_LIST m = new ARRAY_LIST();
 		java.util.ArrayList t = new java.util.ArrayList();
@@ -2139,6 +2175,9 @@ public class ARRAY_LIST KEY_GENERIC extends ABSTRACT_LIST KEY_GENERIC implements
 		m.addAll(t);
 
 		testLists(m, t, n, 0);
+#if KEYS_PRIMITIVE && ! defined(Custom)
+		testPrimitiveSelfRemoveAll();
+#endif
 
 		System.out.println("Test OK");
 		return;
